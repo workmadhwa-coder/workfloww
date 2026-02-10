@@ -6,57 +6,82 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { User, Mail, Briefcase, Key, Save } from 'lucide-react';
-
-interface LocalUser {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-  role: string;
-  designation?: string;
-}
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 const ProfileContent: React.FC = () => {
   const { user } = useAuth();
   const [isEditingPassword, setIsEditingPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
 
-  const handleChangePassword = () => {
-    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+  const handleChangePassword = async () => {
+    if (!user?.id) {
+      alert('User not found');
+      return;
+    }
+
+    const { currentPassword, newPassword, confirmPassword } = passwordData;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
       alert('Please fill in all password fields');
       return;
     }
 
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
+    if (newPassword !== confirmPassword) {
       alert('New passwords do not match');
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
+    if (newPassword.length < 6) {
       alert('Password must be at least 6 characters long');
       return;
     }
 
-    // Update password in localStorage
-    const users: LocalUser[] = JSON.parse(localStorage.getItem('users') || '[]');
-    const userIndex = users.findIndex((u: LocalUser) => u.id === user?.id);
-    
-    if (userIndex !== -1) {
-      if (users[userIndex].password !== passwordData.currentPassword) {
+    try {
+      setLoading(true);
+
+      const userRef = doc(db, 'employees', user.id);
+      const snap = await getDoc(userRef);
+
+      if (!snap.exists()) {
+        alert('User record not found in database');
+        return;
+      }
+
+      const dbUser = snap.data();
+
+      // 🔐 Validate current password
+      if (dbUser.password !== currentPassword) {
         alert('Current password is incorrect');
         return;
       }
 
-      users[userIndex].password = passwordData.newPassword;
-      localStorage.setItem('users', JSON.stringify(users));
-      
+      // ✅ Update password in Firestore
+      await updateDoc(userRef, {
+        password: newPassword,
+        updatedAt: new Date()
+      });
+
       alert('Password changed successfully!');
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+
       setIsEditingPassword(false);
+    } catch (error) {
+      console.error('Password update error:', error);
+      alert('Failed to update password. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -73,6 +98,7 @@ const ProfileContent: React.FC = () => {
           </CardTitle>
           <CardDescription>Your account details and information</CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-6">
           <div className="flex items-center space-x-4">
             <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
@@ -89,7 +115,7 @@ const ProfileContent: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
+            <div>
               <div className="flex items-center text-sm text-muted-foreground">
                 <Mail className="w-4 h-4 mr-2" />
                 Email Address
@@ -97,7 +123,7 @@ const ProfileContent: React.FC = () => {
               <p className="font-medium">{user?.email}</p>
             </div>
 
-            <div className="space-y-2">
+            <div>
               <div className="flex items-center text-sm text-muted-foreground">
                 <Briefcase className="w-4 h-4 mr-2" />
                 Designation
@@ -105,7 +131,7 @@ const ProfileContent: React.FC = () => {
               <p className="font-medium">{user?.designation || 'Not specified'}</p>
             </div>
 
-            <div className="space-y-2">
+            <div>
               <div className="flex items-center text-sm text-muted-foreground">
                 <User className="w-4 h-4 mr-2" />
                 Employee ID
@@ -113,12 +139,12 @@ const ProfileContent: React.FC = () => {
               <p className="font-medium">{user?.id}</p>
             </div>
 
-            <div className="space-y-2">
+            <div>
               <div className="flex items-center text-sm text-muted-foreground">
                 <Badge className="w-4 h-4 mr-2" />
                 Account Status
               </div>
-              <Badge variant="default">Active</Badge>
+              <Badge>Active</Badge>
             </div>
           </div>
         </CardContent>
@@ -133,6 +159,7 @@ const ProfileContent: React.FC = () => {
           </CardTitle>
           <CardDescription>Update your account password</CardDescription>
         </CardHeader>
+
         <CardContent>
           {!isEditingPassword ? (
             <Button onClick={() => setIsEditingPassword(true)}>
@@ -145,38 +172,49 @@ const ProfileContent: React.FC = () => {
                 <Input
                   type="password"
                   value={passwordData.currentPassword}
-                  onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                  placeholder="Enter current password"
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                  }
                 />
               </div>
+
               <div>
                 <Label>New Password</Label>
                 <Input
                   type="password"
                   value={passwordData.newPassword}
-                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                  placeholder="Enter new password (min 6 characters)"
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, newPassword: e.target.value })
+                  }
                 />
               </div>
+
               <div>
                 <Label>Confirm New Password</Label>
                 <Input
                   type="password"
                   value={passwordData.confirmPassword}
-                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                  placeholder="Confirm new password"
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                  }
                 />
               </div>
+
               <div className="flex space-x-2">
-                <Button onClick={handleChangePassword} className="flex-1">
+                <Button onClick={handleChangePassword} disabled={loading} className="flex-1">
                   <Save className="w-4 h-4 mr-2" />
-                  Save Password
+                  {loading ? 'Saving...' : 'Save Password'}
                 </Button>
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setIsEditingPassword(false);
-                    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    setPasswordData({
+                      currentPassword: '',
+                      newPassword: '',
+                      confirmPassword: ''
+                    });
                   }}
                   className="flex-1"
                 >
@@ -188,7 +226,7 @@ const ProfileContent: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Account Information */}
+      {/* Account Info */}
       <Card>
         <CardHeader>
           <CardTitle>Default Login Credentials</CardTitle>

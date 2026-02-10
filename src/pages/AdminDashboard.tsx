@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import StatsCards from '../components/admin/StatsCards';
 import AttendanceSection from '../components/admin/AttendanceSection';
 import ProjectSection from '../components/admin/ProjectSection';
+import LeaveManagement from '../components/admin/LeaveManagement';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { attendanceService, projectService, employeeService } from '../services/firebaseService';
 import type { AttendanceRecord, Project, Task, Employee } from '../types';
 
@@ -31,6 +33,7 @@ const AdminDashboard: React.FC = () => {
   const [isAssignClientDialogOpen, setIsAssignClientDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<string[]>([]);
   
   const [newProject, setNewProject] = useState({
     title: '',
@@ -89,7 +92,8 @@ const AdminDashboard: React.FC = () => {
         createdAt: new Date().toISOString(),
         createdBy: 'Admin',
         tasks: [],
-        assignedClients: []
+        assignedClients: [],
+        teamMembers: selectedTeamMemberIds
       });
 
       await loadData();
@@ -101,6 +105,7 @@ const AdminDashboard: React.FC = () => {
         status: 'active',
         priority: 'medium'
       });
+      setSelectedTeamMemberIds([]);
       setIsProjectDialogOpen(false);
     } catch (error) {
       console.error('Error creating project:', error);
@@ -116,7 +121,8 @@ const AdminDashboard: React.FC = () => {
         title: selectedProject.title,
         description: selectedProject.description,
         priority: selectedProject.priority,
-        status: selectedProject.status
+        status: selectedProject.status,
+        teamMembers: selectedTeamMemberIds
       });
 
       await loadData();
@@ -172,9 +178,25 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
+  const handleToggleTeamMember = (employeeId: string) => {
+    setSelectedTeamMemberIds(prev => {
+      if (prev.includes(employeeId)) {
+        return prev.filter(id => id !== employeeId);
+      } else {
+        return [...prev, employeeId];
+      }
+    });
+  };
+
   const handleCreateTask = async () => {
     if (!newTask.title || !newTask.assignedTo || !selectedProject) {
       alert('Please fill in all required fields');
+      return;
+    }
+
+    const teamMembers = selectedProject.teamMembers || [];
+    if (!teamMembers.includes(newTask.assignedTo)) {
+      alert('Selected employee is not a team member of this project');
       return;
     }
 
@@ -296,6 +318,17 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const getProjectTeamMembers = (project: Project) => {
+    const teamMemberIds = project.teamMembers || [];
+    return employees.filter(emp => teamMemberIds.includes(emp.id));
+  };
+
+  const getAvailableEmployeesForTask = () => {
+    if (!selectedProject) return [];
+    const teamMemberIds = selectedProject.teamMembers || [];
+    return employees.filter(emp => teamMemberIds.includes(emp.id));
+  };
+
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
@@ -306,40 +339,58 @@ const AdminDashboard: React.FC = () => {
 
       <StatsCards stats={stats} />
 
-      <AttendanceSection
-        attendanceData={attendanceData}
-        onViewReport={(record) => {
-          setSelectedReport(record);
-          setIsReportDialogOpen(true);
-        }}
-        onExport={exportAttendance}
-      />
+      {/* Tabs for different sections */}
+      <Tabs defaultValue="attendance" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="projects">Projects</TabsTrigger>
+          <TabsTrigger value="leaves">Leave Management</TabsTrigger>
+        </TabsList>
 
-      <ProjectSection
-        projects={projects}
-        onCreateProject={() => setIsProjectDialogOpen(true)}
-        onEditProject={(project) => {
-          setSelectedProject(project);
-          setIsEditProjectDialogOpen(true);
-        }}
-        onDeleteProject={handleDeleteProject}
-        onAssignClients={handleOpenAssignClientDialog}
-        onAddTask={(project) => {
-          setSelectedProject(project);
-          setIsTaskDialogOpen(true);
-        }}
-        onAddSubtask={(project, task) => {
-          setSelectedProject(project);
-          setSelectedTask(task);
-          setIsSubtaskDialogOpen(true);
-        }}
-        getPriorityColor={getPriorityColor}
-        getStatusColor={getStatusColor}
-      />
+        <TabsContent value="attendance" className="mt-6">
+          <AttendanceSection
+            attendanceData={attendanceData}
+            onViewReport={(record) => {
+              setSelectedReport(record);
+              setIsReportDialogOpen(true);
+            }}
+            onExport={exportAttendance}
+          />
+        </TabsContent>
+
+        <TabsContent value="projects" className="mt-6">
+          <ProjectSection
+            projects={projects}
+            onCreateProject={() => setIsProjectDialogOpen(true)}
+            onEditProject={(project) => {
+              setSelectedProject(project);
+              setSelectedTeamMemberIds(project.teamMembers || []);
+              setIsEditProjectDialogOpen(true);
+            }}
+            onDeleteProject={handleDeleteProject}
+            onAssignClients={handleOpenAssignClientDialog}
+            onAddTask={(project) => {
+              setSelectedProject(project);
+              setIsTaskDialogOpen(true);
+            }}
+            onAddSubtask={(project, task) => {
+              setSelectedProject(project);
+              setSelectedTask(task);
+              setIsSubtaskDialogOpen(true);
+            }}
+            getPriorityColor={getPriorityColor}
+            getStatusColor={getStatusColor}
+          />
+        </TabsContent>
+
+        <TabsContent value="leaves" className="mt-6">
+          <LeaveManagement />
+        </TabsContent>
+      </Tabs>
 
       {/* Create Project Dialog */}
       <Dialog open={isProjectDialogOpen} onOpenChange={setIsProjectDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>Add project details visible to assigned clients and employees</DialogDescription>
@@ -363,6 +414,36 @@ const AdminDashboard: React.FC = () => {
                 placeholder="Detailed project description"
                 rows={4}
               />
+            </div>
+            <div>
+              <Label>Team Members</Label>
+              <div className="mt-2 border rounded-lg p-3 max-h-48 overflow-y-auto">
+                {employees.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-2">No employees available</p>
+                ) : (
+                  <div className="space-y-2">
+                    {employees.map((employee) => (
+                      <div key={employee.id} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                        <Checkbox
+                          id={`team-${employee.id}`}
+                          checked={selectedTeamMemberIds.includes(employee.id)}
+                          onCheckedChange={() => handleToggleTeamMember(employee.id)}
+                        />
+                        <label
+                          htmlFor={`team-${employee.id}`}
+                          className="flex-1 cursor-pointer"
+                        >
+                          <p className="font-medium text-sm">{employee.name}</p>
+                          <p className="text-xs text-muted-foreground">{employee.email}</p>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Selected: {selectedTeamMemberIds.length} team member(s)
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -442,6 +523,36 @@ const AdminDashboard: React.FC = () => {
                   onChange={(e) => setSelectedProject({ ...selectedProject, description: e.target.value })}
                   rows={4}
                 />
+              </div>
+              <div>
+                <Label>Team Members</Label>
+                <div className="mt-2 border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  {employees.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-2">No employees available</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {employees.map((employee) => (
+                        <div key={employee.id} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                          <Checkbox
+                            id={`edit-team-${employee.id}`}
+                            checked={selectedTeamMemberIds.includes(employee.id)}
+                            onCheckedChange={() => handleToggleTeamMember(employee.id)}
+                          />
+                          <label
+                            htmlFor={`edit-team-${employee.id}`}
+                            className="flex-1 cursor-pointer"
+                          >
+                            <p className="font-medium text-sm">{employee.name}</p>
+                            <p className="text-xs text-muted-foreground">{employee.email}</p>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Selected: {selectedTeamMemberIds.length} team member(s)
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -556,11 +667,20 @@ const AdminDashboard: React.FC = () => {
                     <SelectValue placeholder="Select employee" />
                   </SelectTrigger>
                   <SelectContent>
-                    {employees.map((emp) => (
-                      <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                    ))}
+                    {getAvailableEmployeesForTask().length === 0 ? (
+                      <SelectItem value="none" disabled>No team members available</SelectItem>
+                    ) : (
+                      getAvailableEmployeesForTask().map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
+                {selectedProject && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Only team members of this project can be assigned
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Priority</Label>

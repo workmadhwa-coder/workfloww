@@ -26,7 +26,8 @@ const ProjectsContent: React.FC = () => {
   const loadProjects = async () => {
     try {
       const allProjects: Project[] = await projectService.getAll();
-      setProjects(allProjects);
+      const userProjects = allProjects.filter(p => p.teamMembers?.includes(user?.id || ''));
+      setProjects(userProjects);
 
       const tasksForMe: TaskWithProject[] = [];
       allProjects.forEach((project) => {

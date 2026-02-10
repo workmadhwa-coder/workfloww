@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Plus, Edit, Trash2, UserPlus, CheckSquare } from 'lucide-react';
+import { Plus, Edit, Trash2, UserPlus, CheckSquare, Clock } from 'lucide-react';
 import type { Project, Task } from '../../types';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
@@ -126,9 +126,9 @@ const ProjectSection: React.FC<ProjectSectionProps> = ({
                     </div>
 
                     {project.tasks && project.tasks.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="space-y-4">
                         {project.tasks.map((task) => (
-                          <div key={task.id} className="p-3 border rounded-lg">
+                          <div key={task.id} className="p-3 border rounded-lg bg-gray-50/30">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <h4 className="font-medium">{task.title}</h4>
@@ -144,11 +144,6 @@ const ProjectSection: React.FC<ProjectSectionProps> = ({
                                     Due: {new Date(task.dueDate).toLocaleDateString()}
                                   </span>
                                 </div>
-                                {task.subtasks && task.subtasks.length > 0 && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Subtasks: {task.subtasks.filter(st => st.status === 'completed').length}/{task.subtasks.length} completed
-                                  </p>
-                                )}
                               </div>
                               <Button 
                                 variant="outline" 
@@ -159,6 +154,36 @@ const ProjectSection: React.FC<ProjectSectionProps> = ({
                                 Add Subtask
                               </Button>
                             </div>
+
+                            {/* SUBTASK LISTING WITH TIMESTAMPS */}
+                            {task.subtasks && task.subtasks.length > 0 && (
+                              <div className="mt-4 pl-4 border-l-2 border-gray-100 space-y-2">
+                                {task.subtasks.map((subtask) => (
+                                  <div key={subtask.id} className="flex items-center justify-between bg-white p-2 rounded border border-gray-100 shadow-sm">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-2 h-2 rounded-full ${subtask.status === 'completed' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                      <span className={`text-sm ${subtask.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-700'}`}>
+                                        {subtask.title}
+                                      </span>
+                                    </div>
+                                    
+                                    {/* STATUS AND TIME REFLECTION */}
+                                    {subtask.status === 'completed' ? (
+                                      <div className="flex items-center gap-1.5 text-[10px] font-medium text-green-600 bg-green-50 px-2 py-1 rounded">
+                                        <Clock className="w-3 h-3" />
+                                        {subtask.completedAt ? 
+                                          new Date(subtask.completedAt).toLocaleString([], { 
+                                            dateStyle: 'short', 
+                                            timeStyle: 'short' 
+                                          }) : 'Completed'}
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-400 italic">Pending</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

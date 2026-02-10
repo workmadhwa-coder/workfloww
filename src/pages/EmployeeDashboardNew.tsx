@@ -4,6 +4,7 @@ import EmployeeDashboardContent from '../components/employee/DashboardContent';
 import EmployeeAttendanceContent from '../components/employee/AttendanceContent';
 import EmployeeProjectsContent from '../components/employee/ProjectsContent';
 import ProfileContent from '../components/employee/ProfileContent';
+import LeaveContent from '../components/employee/LeaveContent';
 
 const EmployeeDashboardNew: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
@@ -14,6 +15,8 @@ const EmployeeDashboardNew: React.FC = () => {
         return <EmployeeDashboardContent />;
       case 'attendance':
         return <EmployeeAttendanceContent />;
+      case 'leave':
+        return <LeaveContent />;
       case 'projects':
         return <EmployeeProjectsContent />;
       case 'profile':

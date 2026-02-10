@@ -40,6 +40,26 @@ export interface AttendanceRecord {
   isActive: boolean;
   isLate: boolean;
   location?: string;
+  checkInDeviceId?: string;
+  checkInDeviceInfo?: string;
+}
+
+export interface LeaveRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userDesignation: string;
+  leaveType: 'sick' | 'casual' | 'annual' | 'unpaid' | 'other';
+  reason: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  status: 'pending' | 'approved' | 'rejected';
+  appliedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewerComments?: string;
 }
 
 export interface Project {
@@ -54,6 +74,7 @@ export interface Project {
   createdBy: string;
   tasks: Task[];
   assignedClients?: string[];
+  teamMembers?: string[];
 }
 
 export interface Task {

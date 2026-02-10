@@ -3,20 +3,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { Download, Eye } from 'lucide-react';
+import { Download, Eye, Trash2, Monitor } from 'lucide-react';
 import type { AttendanceRecord } from '../../types';
+import { attendanceService } from '../../services/firebaseService';
+import { toast } from 'sonner';
 
 interface AttendanceSectionProps {
   attendanceData: AttendanceRecord[];
   onViewReport: (record: AttendanceRecord) => void;
   onExport: () => void;
+  onRefresh: () => void;
 }
 
 const AttendanceSection: React.FC<AttendanceSectionProps> = ({
   attendanceData,
   onViewReport,
-  onExport
+  onExport,
+  onRefresh
 }) => {
+  const handleDeleteAttendance = async (record: AttendanceRecord) => {
+    if (!confirm(`Are you sure you want to delete attendance record for ${record.userName} on ${new Date(record.date).toLocaleDateString()}?`)) {
+      return;
+    }
+
+    try {
+      await attendanceService.delete(record.id);
+      toast.success('Attendance record deleted successfully!');
+      onRefresh();
+    } catch (error) {
+      console.error('Error deleting attendance:', error);
+      toast.error('Failed to delete attendance record. Please try again.');
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -37,7 +56,7 @@ const AttendanceSection: React.FC<AttendanceSectionProps> = ({
             <p className="text-center text-muted-foreground py-8">No attendance records yet</p>
           ) : (
             attendanceData.slice().reverse().map((record) => (
-              <div key={record.id} className="flex items-center justify-between p-4 border rounded-lg">
+              <div key={record.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                 <div className="flex items-center space-x-4 flex-1">
                   <Avatar>
                     <AvatarFallback>{record.userName?.split(' ').map((n: string) => n[0]).join('') || 'U'}</AvatarFallback>
@@ -57,6 +76,12 @@ const AttendanceSection: React.FC<AttendanceSectionProps> = ({
                         </span>
                       )}
                     </div>
+                    {record.checkInDeviceInfo && (
+                      <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                        <Monitor className="w-3 h-3 mr-1" />
+                        <span>Checked in from: {record.checkInDeviceInfo}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -74,6 +99,14 @@ const AttendanceSection: React.FC<AttendanceSectionProps> = ({
                       View Report
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteAttendance(record)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             ))

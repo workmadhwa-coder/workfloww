@@ -28,7 +28,12 @@ const ProjectsView: React.FC = () => {
 
   const loadProjects = () => {
     const storedProjects = JSON.parse(localStorage.getItem('projects') || '[]');
-    setProjects(storedProjects);
+    if (user?.role === 'employee') {
+      const userProjects = storedProjects.filter((p: any) => p.teamMembers?.includes(user.id));
+      setProjects(userProjects);
+    } else {
+      setProjects(storedProjects);
+    }
   };
 
   return (

@@ -134,7 +134,8 @@ const EmployeeDashboard: React.FC = () => {
 
   const loadProjects = () => {
     const storedProjects: Project[] = JSON.parse(localStorage.getItem('projects') || '[]');
-    setProjects(storedProjects);
+    const userProjects = storedProjects.filter(p => p.teamMembers?.includes(user?.id || ''));
+    setProjects(userProjects);
     
     const tasksForMe: { project: Project; task: Task }[] = [];
     storedProjects.forEach(project => {
@@ -571,6 +572,20 @@ const EmployeeDashboard: React.FC = () => {
                               <p className="text-xs text-muted-foreground">
                                 Assigned to: {task.assignedTo === user?.id ? 'You' : 'Other'}
                               </p>
+                              {task.subtasks && task.subtasks.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-xs font-medium">Subtasks:</p>
+                                  {task.subtasks.map((subtask) => (
+                                    <div key={subtask.id} className="text-xs pl-2 border-l-2 border-gray-300">
+                                      <p>{subtask.title}</p>
+                                      <p className="text-muted-foreground">{subtask.description}</p>
+                                      <Badge variant={subtask.status === 'completed' ? 'default' : 'secondary'} className="text-xs mt-1">
+                                        {subtask.status}
+                                      </Badge>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                           {project.tasks.length > 3 && (

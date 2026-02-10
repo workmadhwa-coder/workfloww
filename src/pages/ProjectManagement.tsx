@@ -284,7 +284,7 @@ const ProjectManagement: React.FC = () => {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Create New Project</DialogTitle>
+                    <DialogTitle>Create New Projectttt</DialogTitle>
                     <DialogDescription>Start a new project with team collaboration</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
