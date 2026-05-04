@@ -10,9 +10,9 @@ import { getDeviceId, getDeviceInfo } from '../../utils/deviceId';
 import { toast } from 'sonner';
 
 const AttendanceContent: React.FC = () => {
-  const { user } = useAuth();
+  // 1. Get user and potentially a 'loading' state from AuthContext
+  const { user, loading: authLoading } = useAuth(); 
   
-  // State Management
   const [loading, setLoading] = useState(true);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInTime, setCheckInTime] = useState<Date | null>(null);
@@ -27,35 +27,44 @@ const AttendanceContent: React.FC = () => {
 
   /**
    * RE-HYDRATION LOGIC
-   * Fetches the existing session from Firebase and restores local state
+   * Fetches the existing session from Firebase. 
+   * This is what enables Cross-Device sync and Persistence on Refresh.
    */
   const checkTodayAttendance = useCallback(async () => {
     if (!user?.id) return;
     
     setLoading(true);
     try {
-      // Pulling data from the corrected firebaseService logic
+      // Fetch the most recent active record
       const todayRecord = await attendanceService.getTodayByUserId(user.id);
       
       if (todayRecord && todayRecord.isActive) {
-        // Convert ISO string back to JS Date object
         const startTime = new Date(todayRecord.checkInTime);
-        
-        setIsCheckedIn(true);
-        setCheckInTime(startTime);
-        setCurrentAttendanceId(todayRecord.id);
-        setCheckInDeviceInfo(todayRecord.checkInDeviceInfo || 'Unknown Device');
-        
-        // Immediate Timer Sync
         const now = new Date();
-        const timeDiff = now.getTime() - startTime.getTime();
-        setWorkingTime(timeDiff / (1000 * 60 * 60));
-
-        toast.success("Attendance session restored.");
+        
+        // CHECK IF SESSION IS FROM A PREVIOUS DAY
+        const isSameDay = startTime.toDateString() === now.toDateString();
+        
+        if (!isSameDay) {
+          // If the session is from yesterday or earlier, auto-checkout it now
+          await handleAutoCheckout(todayRecord.id, startTime);
+          setIsCheckedIn(false);
+          setCheckInTime(null);
+        } else {
+          // It's a valid session for today
+          setIsCheckedIn(true);
+          setCheckInTime(startTime);
+          setCurrentAttendanceId(todayRecord.id);
+          setCheckInDeviceInfo(todayRecord.checkInDeviceInfo || 'Unknown Device');
+          
+          // Calculate initial working time immediately
+          const timeDiff = Math.max(0, now.getTime() - startTime.getTime());
+          setWorkingTime(timeDiff / (1000 * 60 * 60));
+          toast.success("Session restored successfully.");
+        }
       } else {
         setIsCheckedIn(false);
         setCheckInTime(null);
-        setWorkingTime(0);
         setCurrentAttendanceId(null);
       }
     } catch (error) {
@@ -66,20 +75,25 @@ const AttendanceContent: React.FC = () => {
     }
   }, [user?.id]);
 
-  // Initial load
+  // Initial load sync
   useEffect(() => {
-    checkTodayAttendance();
-  }, [checkTodayAttendance]);
+    if (!authLoading && user?.id) {
+      checkTodayAttendance();
+    } else if (!authLoading && !user) {
+      setLoading(false);
+    }
+  }, [user?.id, authLoading, checkTodayAttendance]);
 
   /**
    * LIVE TIMER LOGIC
+   * Recalculates based on the difference between NOW and START TIME
    */
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isCheckedIn && checkInTime) {
       interval = setInterval(() => {
         const now = new Date();
-        const timeDiff = now.getTime() - checkInTime.getTime();
+        const timeDiff = Math.max(0, now.getTime() - checkInTime.getTime());
         setWorkingTime(timeDiff / (1000 * 60 * 60));
       }, 1000);
     }
@@ -87,6 +101,63 @@ const AttendanceContent: React.FC = () => {
       if (interval) clearInterval(interval);
     };
   }, [isCheckedIn, checkInTime]);
+
+  /**
+   * AUTOMATIC MIDNIGHT CHECKOUT TIMER
+   * Schedules a checkout if the user stays on the page until 12:00 AM
+   */
+  useEffect(() => {
+    let midnightTimer: NodeJS.Timeout;
+
+    if (isCheckedIn && currentAttendanceId && checkInTime) {
+      const now = new Date();
+      const midnight = new Date();
+      midnight.setHours(24, 0, 0, 0); 
+
+      const timeUntilMidnight = midnight.getTime() - now.getTime();
+
+      midnightTimer = setTimeout(() => {
+        handleAutoCheckout(currentAttendanceId, checkInTime);
+      }, timeUntilMidnight);
+    }
+
+    return () => {
+      if (midnightTimer) clearTimeout(midnightTimer);
+    };
+  }, [isCheckedIn, currentAttendanceId, checkInTime]);
+
+  /**
+   * SHARED AUTO-CHECKOUT FUNCTION
+   */
+  const handleAutoCheckout = async (id: string, startTime: Date) => {
+    try {
+      // Calculate end of that specific day (23:59:59)
+      const endOfDay = new Date(startTime);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const finalHours = (endOfDay.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+
+      await attendanceService.update(id, {
+        checkOutTime: endOfDay.toISOString(),
+        hoursWorked: finalHours,
+        workReport: "They forgot to checkout so im checkouting there work ship like that",
+        isActive: false
+      });
+
+      // Clear local states
+      if (id === currentAttendanceId) {
+        setIsCheckedIn(false);
+        setCheckInTime(null);
+        setWorkingTime(0);
+        setCurrentAttendanceId(null);
+        setWorkReport('');
+      }
+      
+      toast.info('A previous session was automatically closed.');
+    } catch (error) {
+      console.error('Auto-checkout failed:', error);
+    }
+  };
 
   const getUserLocation = (): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -103,7 +174,7 @@ const AttendanceContent: React.FC = () => {
         },
         (error) => {
           setIsGettingLocation(false);
-          reject(new Error('Location permission denied.'));
+          reject(new Error('Location permission denied. Please enable GPS.'));
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );
@@ -112,7 +183,6 @@ const AttendanceContent: React.FC = () => {
 
   const handleMarkAttendance = async () => {
     try {
-      setIsGettingLocation(true);
       const location = await getUserLocation();
       setUserLocation(location);
       setShowMarkAttendanceDialog(true);
@@ -151,9 +221,9 @@ const AttendanceContent: React.FC = () => {
       setCheckInDeviceInfo(deviceInfo);
       setShowMarkAttendanceDialog(false);
       
-      toast.success(`Checked in on ${deviceInfo}`);
+      toast.success(`Checked in successfully!`);
     } catch (error) {
-      toast.error('Failed to save attendance.');
+      toast.error('Failed to save attendance record.');
     }
   };
 
@@ -188,17 +258,18 @@ const AttendanceContent: React.FC = () => {
   };
 
   const formatTime = (hours: number) => {
-    const h = Math.floor(hours);
-    const m = Math.floor((hours - h) * 60);
-    const s = Math.floor(((hours - h) * 60 - m) * 60);
+    const totalSeconds = Math.floor(hours * 3600);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
     return `${h}h ${m}m ${s}s`;
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
         <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-        <p className="text-muted-foreground animate-pulse">Checking active sessions...</p>
+        <p className="text-muted-foreground animate-pulse">Syncing your session...</p>
       </div>
     );
   }
@@ -207,21 +278,19 @@ const AttendanceContent: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       <h2 className="text-2xl font-bold">Attendance Tracking</h2>
 
-      {/* Notice Card */}
       <Card className="bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
           <div className="flex items-start space-x-3">
             <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
             <div className="flex-1 text-sm text-blue-800 space-y-1">
-              <p className="font-semibold">System Information:</p>
-              <p>• Your timer is synced to the database and persists across refreshes.</p>
-              <p>• You can check out from any device once logged in.</p>
+              <p className="font-semibold">Cloud Sync Active:</p>
+              <p>• Your timer is fetched from the database and works on any device.</p>
+              <p>• Closing the browser will not stop your timer.</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Main Action Card */}
       <Card className="shadow-lg border-t-4 border-t-blue-600">
         <CardHeader>
           <CardTitle className="text-lg">Daily Attendance</CardTitle>
@@ -246,14 +315,13 @@ const AttendanceContent: React.FC = () => {
                 <p className="text-green-700 mt-1">Started: {checkInTime?.toLocaleTimeString()}</p>
                 <div className="mt-3 flex items-center justify-center text-xs font-medium text-green-600 bg-white border border-green-100 py-1.5 px-4 rounded-full w-fit mx-auto">
                   <Monitor className="w-3.5 h-3.5 mr-2" />
-                  Checked in via: {checkInDeviceInfo}
+                  Initial Check-in: {checkInDeviceInfo}
                 </div>
               </div>
 
-              {/* Enhanced Timer Display */}
               <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-inner">
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-slate-400 text-sm font-bold uppercase tracking-widest">Live Work Duration</span>
+                  <span className="text-slate-400 text-sm font-bold uppercase tracking-widest">Total Duration</span>
                   <Clock className="text-blue-400 animate-pulse w-5 h-5" />
                 </div>
                 <div className="text-5xl font-mono font-black text-center tabular-nums bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
@@ -272,7 +340,6 @@ const AttendanceContent: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Check-In Dialog */}
       <Dialog open={showMarkAttendanceDialog} onOpenChange={setShowMarkAttendanceDialog}>
         <DialogContent>
           <DialogHeader>
@@ -296,7 +363,6 @@ const AttendanceContent: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Check-Out Dialog */}
       <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>

@@ -213,7 +213,7 @@ const ProjectsContent: React.FC = () => {
             <FileText className="w-5 h-5 mr-2" />
             All Projects
           </CardTitle>
-          <CardDescription>View all company projects</CardDescription>
+          <CardDescription>View projects assigned to you</CardDescription>
         </CardHeader>
 
         <CardContent>
